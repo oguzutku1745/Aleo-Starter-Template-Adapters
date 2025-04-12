@@ -15,7 +15,7 @@ import { EventType, RecordStatus } from '@puzzlehq/types';
 // Extend Window interface for Leo and Aleo wallets
 declare global {
   interface Window {
-    leo?: any;
+    leoWallet?: any;
     aleo?: any;
   }
 }
@@ -395,10 +395,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       addLog("Connecting to Leo Wallet...");
       
       // Try to directly access the Leo wallet extension
-      if (typeof window.leo !== 'undefined') {
+      if (typeof window.leoWallet !== 'undefined') {
         addLog("Leo wallet extension detected, attempting direct connection...");
         try {
-          const accounts = await window.leo.requestAccounts();
+          const accounts = await window.leoWallet.requestAccounts();
           if (accounts && accounts.length > 0) {
             const address = accounts[0];
             setAddress(address);
@@ -412,7 +412,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           addLog(`Direct Leo wallet error: ${directError?.message || "Unknown error"}`);
         }
       } else {
-        addLog("Leo wallet extension not detected in window.leo");
+        addLog("Leo wallet extension not detected in window.leoWallet");
       }
       
       // Fall back to adapter approach
@@ -428,7 +428,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         // Connect with OnChainHistory permission to support record plaintexts
         await leoWallet.connect(
           DecryptPermission.OnChainHistory,
-          'testnetbeta' as any,
+          DemoxWalletAdapterNetwork.TestnetBeta,
           ["credits.aleo"]
         );
         

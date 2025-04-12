@@ -28,6 +28,23 @@ interface Wallet {
   icon: string;
 }
 
+// Extend Window interface for wallet detection
+declare global {
+  interface Window {
+    // For Puzzle Wallet detection
+    puzzleWalletClient?: any;
+    
+    // For Leo Wallet detection
+    leoWallet?: any;
+    
+    // For Fox Wallet detection
+    foxwallet_aleo?: any;
+    
+    // For Soter Wallet detection
+    soterWallet?: any;
+  }
+}
+
 // Collapsible Section Component
 interface CollapsibleSectionProps {
   title: string;
@@ -202,7 +219,7 @@ export function WalletDemo() {
       const detectWallet = async () => {
         try {
           // Check each wallet's pattern to identify them
-          if (typeof window.puzzle !== 'undefined') {
+          if (typeof window.puzzleWalletClient !== 'undefined') {
             setSelectedWallet('puzzle');
             setWalletName('Puzzle Wallet');
             addLog('Detected connected Puzzle Wallet after refresh');
@@ -210,11 +227,11 @@ export function WalletDemo() {
             setSelectedWallet('leo');
             setWalletName('Leo Wallet');
             addLog('Detected connected Leo Wallet after refresh');
-          } else if (typeof window.foxwallet !== 'undefined') {
+          } else if (typeof window.foxwallet_aleo !== 'undefined') {
             setSelectedWallet('fox');
             setWalletName('Fox Wallet');
             addLog('Detected connected Fox Wallet after refresh');
-          } else if (typeof window.soter !== 'undefined' || typeof window.soterWallet !== 'undefined') {
+          } else if (typeof window.soterWallet !== 'undefined') {
             setSelectedWallet('soter');
             setWalletName('Soter Wallet');
             addLog('Detected connected Soter Wallet after refresh');
@@ -299,11 +316,13 @@ export function WalletDemo() {
     setTransactionPending(true);
     addLog(`Creating transaction for ${transactionProgramId}.${transactionFunctionId} with fee ${transactionFee}`);
     
+    const chainId = walletName === "Leo Wallet" ? "testnetbeta" : "testnet3";
+
     try {
       // Create proper AleoTransaction object using Transaction.createTransaction
       const transaction = Transaction.createTransaction(
         address,
-        'testnet', // chainId
+        chainId,
         transactionProgramId,
         transactionFunctionId,
         [receiverAddress, `${transactionAmount}u64`],

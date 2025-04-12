@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 // Import hooks from aleo-hooks
 import { useConnect, useDisconnect, useAccount, useSelect } from 'aleo-hooks';
+// Import Leo wallet specific items
+import { DecryptPermission } from "@demox-labs/aleo-wallet-adapter-base";
 // Import images with proper type declarations
 import puzzleIcon from '../assets/puzzlewallet.png';
 import leoIcon from '../assets/leowallet.png';
@@ -157,7 +159,7 @@ export function ConnectWallet({
         if (index >= 0) updatedOptions[index].detected = true;
       }
       
-      // Check for Leo wallet
+      // Check for Leo wallet - check only leoWallet property
       if (typeof window.leoWallet !== 'undefined') {
         const index = updatedOptions.findIndex(w => w.id === 'leo');
         if (index >= 0) updatedOptions[index].detected = true;
@@ -274,7 +276,34 @@ export function ConnectWallet({
     const adapterId = wallet.adapterId;
     
     try {
-      // First select the wallet adapter
+      // Special handling for Leo wallet
+      if (walletId === 'leo') {
+        // First try direct window.leoWallet access
+        if (typeof window.leoWallet !== 'undefined') {
+          try {
+            const accounts = await window.leoWallet.requestAccounts();
+            if (accounts && accounts.length > 0) {
+              // Direct connection succeeded
+              setWalletName('Leo Wallet');
+              
+              // We still need to select and connect via the adapter for hooks integration
+              select(adapterId as any);
+              await connect(adapterId as any);
+              
+              // Close the modal after 500ms to allow UI to update
+              setTimeout(() => {
+                forceCloseModal();
+              }, 500);
+              return;
+            }
+          } catch (directError) {
+            // Fall back to adapter approach
+            console.warn("Direct Leo wallet connection failed, trying adapter approach");
+          }
+        }
+      }
+      
+      // Standard adapter approach
       select(adapterId as any);
       
       // Then connect after a small delay
@@ -290,10 +319,12 @@ export function ConnectWallet({
             forceCloseModal();
           }, 500);
         } catch (error) {
+          console.error("Connection error:", error);
           setConnectingWalletId(null);
         }
       }, 100);
     } catch (error) {
+      console.error("Selection error:", error);
       setConnectingWalletId(null);
     }
   };

@@ -4,13 +4,15 @@ import "./index.css";
 import { Layout } from "./components/Layout";
 import { useMemo } from "react";
 import { WalletProvider, WalletAdapterNetwork, DecryptPermission } from "aleo-hooks";
+import { WalletAdapterNetwork as LeoWalletNetwork } from "@demox-labs/aleo-wallet-adapter-base";
 
 import {
   PuzzleWalletAdapter,
-  LeoWalletAdapter,
   FoxWalletAdapter,
   SoterWalletAdapter
 } from 'aleo-adapters';
+
+import { LeoWalletAdapter } from "@demox-labs/aleo-wallet-adapter-leo";
 
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { WalletDemo } from "./components/WalletDemo";
@@ -43,7 +45,7 @@ function App() {
     <ThemeProvider>
       <WalletProvider
               wallets={wallets}
-              network={WalletAdapterNetwork.Testnet}
+              network={LeoWalletNetwork.TestnetBeta as any}
               decryptPermission={DecryptPermission.OnChainHistory}
               programs={['credits.aleo']}
               autoConnect
