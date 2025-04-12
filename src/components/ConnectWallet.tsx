@@ -2,8 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 // Import hooks from aleo-hooks
 import { useConnect, useDisconnect, useAccount, useSelect } from 'aleo-hooks';
-// Import Leo wallet specific items
-import { DecryptPermission } from "@demox-labs/aleo-wallet-adapter-base";
 // Import images with proper type declarations
 import puzzleIcon from '../assets/puzzlewallet.png';
 import leoIcon from '../assets/leowallet.png';
@@ -276,37 +274,10 @@ export function ConnectWallet({
     const adapterId = wallet.adapterId;
     
     try {
-      // Special handling for Leo wallet
-      if (walletId === 'leo') {
-        // First try direct window.leoWallet access
-        if (typeof window.leoWallet !== 'undefined') {
-          try {
-            const accounts = await window.leoWallet.requestAccounts();
-            if (accounts && accounts.length > 0) {
-              // Direct connection succeeded
-              setWalletName('Leo Wallet');
-              
-              // We still need to select and connect via the adapter for hooks integration
-              select(adapterId as any);
-              await connect(adapterId as any);
-              
-              // Close the modal after 500ms to allow UI to update
-              setTimeout(() => {
-                forceCloseModal();
-              }, 500);
-              return;
-            }
-          } catch (directError) {
-            // Fall back to adapter approach
-            console.warn("Direct Leo wallet connection failed, trying adapter approach");
-          }
-        }
-      }
-      
-      // Standard adapter approach
+      // Standard adapter approach for all wallets
       select(adapterId as any);
       
-      // Then connect after a small delay
+      // Connect after a small delay
       setTimeout(async () => {
         try {
           await connect(adapterId as any);

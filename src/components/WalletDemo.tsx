@@ -145,7 +145,10 @@ export function WalletDemo() {
   const { publicKey: address, connected } = useAccount();
   const { executeTransaction, transactionId } = useTransaction();
   const { signMessage } = useSignMessage();
-  const { decrypt, decryptedText } = useDecrypt({ cipherText: decryptCiphertext });
+  const { decrypt, decryptedText } = useDecrypt({ 
+    cipherText: decryptCiphertext,
+    enabled: decryptCiphertext.length > 0 
+  });
   const { records } = useRecords({ program: recordsProgramId });
   const { select } = useSelect();
 
@@ -677,13 +680,6 @@ export function WalletDemo() {
               {transactionPending ? 'Processing...' : 'Create Transaction'}
             </button>
             
-            {transactionId && (
-              <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/30 rounded-md">
-                <p className="text-sm text-green-800 dark:text-green-300 break-all">
-                  <span className="font-semibold">Transaction ID:</span> {transactionId}
-                </p>
-              </div>
-            )}
             
             {transactionResult && (
               <div className={`mt-4 p-3 ${
