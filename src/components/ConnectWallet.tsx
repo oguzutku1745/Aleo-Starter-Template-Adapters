@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useWallet } from '../contexts/WalletContext';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+// Import hooks from aleo-hooks
+import { useConnect, useDisconnect, useAccount, useSelect } from 'aleo-hooks';
 // Import images with proper type declarations
 import puzzleIcon from '../assets/puzzlewallet.png';
 import leoIcon from '../assets/leowallet.png';
@@ -8,10 +9,11 @@ import foxIcon from '../assets/foxwallet.svg';
 import soterIcon from '../assets/soterwallet.png';
 
 interface WalletOption {
-  id: 'puzzle' | 'leo' | 'fox' | 'soter';
+  id: string;
   name: string;
   icon: string;
   iconSrc: string;
+  adapterId: string;
   detected?: boolean;
 }
 
@@ -33,6 +35,7 @@ const initialWalletOptions: WalletOption[] = [
     name: 'Puzzle Wallet',
     icon: '🧩',
     iconSrc: puzzleIcon,
+    adapterId: 'Puzzle Wallet',
     detected: false
   },
   {
@@ -40,6 +43,7 @@ const initialWalletOptions: WalletOption[] = [
     name: 'Leo Wallet',
     icon: '🦁',
     iconSrc: leoIcon,
+    adapterId: 'Leo Wallet',
     detected: false
   },
   {
@@ -47,6 +51,7 @@ const initialWalletOptions: WalletOption[] = [
     name: 'Fox Wallet',
     icon: '🦊',
     iconSrc: foxIcon,
+    adapterId: 'Fox Wallet',
     detected: false
   },
   {
@@ -54,6 +59,7 @@ const initialWalletOptions: WalletOption[] = [
     name: 'Soter Wallet',
     icon: '🛡️',
     iconSrc: soterIcon,
+    adapterId: 'Soter Wallet',
     detected: false
   }
 ];
@@ -72,7 +78,13 @@ export function ConnectWallet({
   const [copied, setCopied] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modalRootRef = useRef<HTMLDivElement | null>(null);
-  const { connected, connecting, address, walletName, connectWallet, disconnectWallet } = useWallet();
+  
+  // Use aleo-hooks instead of context
+  const { connect, connecting } = useConnect();
+  const { disconnect } = useDisconnect();
+  const { publicKey: address, connected } = useAccount();
+  const { select } = useSelect();
+  const [walletName, setWalletName] = useState<string | null>(null);
   
   // Use refs to track the latest state values for use in intervals/timeouts
   const connectedRef = useRef(connected);
@@ -103,6 +115,29 @@ export function ConnectWallet({
       }
     };
   }, []);
+
+  // Add an effect to detect wallet type on initial connect or page refresh
+  useEffect(() => {
+    if (connected && !walletName) {
+      const detectWalletType = () => {
+        // Check for each wallet type
+        if (typeof window.puzzle !== 'undefined') {
+          setWalletName('Puzzle Wallet');
+        } else if (typeof window.leoWallet !== 'undefined') {
+          setWalletName('Leo Wallet');
+        } else if (typeof window.foxwallet !== 'undefined') {
+          setWalletName('Fox Wallet');
+        } else if (typeof window.soter !== 'undefined' || typeof window.soterWallet !== 'undefined') {
+          setWalletName('Soter Wallet');
+        } else {
+          // Generic fallback
+          setWalletName('Connected Wallet');
+        }
+      };
+      
+      detectWalletType();
+    }
+  }, [connected, walletName]);
 
   // Function to shorten address for display
   const shortenAddress = (addr: string | null) => {
@@ -225,75 +260,52 @@ export function ConnectWallet({
     document.body.style.overflow = '';
   };
 
-  const handleConnect = async (walletId: 'puzzle' | 'leo' | 'fox' | 'soter') => {
+  const handleConnect = async (walletId: string) => {
     setConnectingWalletId(walletId);
     
-    // Special handling for Puzzle wallet which needs more time
-    if (walletId === 'puzzle') {
-      try {
-        // Start connection process
-        await connectWallet(walletId);
-        
-        let autoCloseTimeout: NodeJS.Timeout;
-        
-        // Use a timeout to check the connection status periodically
-        const connectionCheckInterval = setInterval(() => {
-          // Access the latest state values through refs
-          const isNowConnected = connectedRef.current;
-          const isStillConnecting = connectingRef.current;
+    // Find the wallet option
+    const wallet = walletOptions.find(w => w.id === walletId);
+    if (!wallet) {
+      setConnectingWalletId(null);
+      return;
+    }
+    
+    // Get the adapter ID
+    const adapterId = wallet.adapterId;
+    
+    try {
+      // First select the wallet adapter
+      select(adapterId as any);
+      
+      // Then connect after a small delay
+      setTimeout(async () => {
+        try {
+          await connect(adapterId as any);
           
-          // If connected is true, clear the interval and close the modal
-          if (isNowConnected) {
-            clearInterval(connectionCheckInterval);
-            clearTimeout(autoCloseTimeout);
-            
-            // Use the force close method
+          // Set the wallet name
+          setWalletName(wallet.name);
+          
+          // Close the modal after 500ms to allow UI to update
+          setTimeout(() => {
             forceCloseModal();
-            return;
-          }
-          
-          // If no longer connecting and not connected, something went wrong
-          if (!isStillConnecting && !isNowConnected) {
-            clearInterval(connectionCheckInterval);
-            clearTimeout(autoCloseTimeout);
-            setConnectingWalletId(null);
-          }
-        }, 1000);
-        
-        // Set a timeout to force close the modal after 10 seconds if we're connected
-        // This handles cases where the interval might not detect the connection
-        autoCloseTimeout = setTimeout(() => {
-          clearInterval(connectionCheckInterval);
-          
-          // Check one last time if connected before giving up
-          if (connectedRef.current) {
-            forceCloseModal();
-          } else {
-            setConnectingWalletId(null);
-          }
-        }, 10000);
-        
-        return () => {
-          clearInterval(connectionCheckInterval);
-          clearTimeout(autoCloseTimeout);
-        };
-      } catch (error) {
-        setConnectingWalletId(null);
-      }
-    } else {
-      // For other wallets, use the original approach
-      await connectWallet(walletId);
-      // Always close the modal after attempting to connect, regardless of success
-      // The connected state will be updated by the context
-      setTimeout(() => {
-        forceCloseModal();
-      }, 500);
+          }, 500);
+        } catch (error) {
+          setConnectingWalletId(null);
+        }
+      }, 100);
+    } catch (error) {
+      setConnectingWalletId(null);
     }
   };
 
   const handleDisconnect = async () => {
-    await disconnectWallet();
-    setIsDropdownOpen(false);
+    try {
+      await disconnect();
+      setWalletName(null);
+      setIsDropdownOpen(false);
+    } catch (error) {
+      console.error("Disconnect error:", error);
+    }
   };
 
   const handleChangeWallet = () => {
@@ -307,11 +319,8 @@ export function ConnectWallet({
   const getWalletIcon = (): string | undefined => {
     if (!walletName) return undefined;
     
-    // Extract the first word of the wallet name and convert to lowercase
-    const walletId = walletName.toLowerCase().split(' ')[0];
-    
-    // Find the matching wallet option
-    const wallet = walletOptions.find(w => w.id === walletId);
+    // Find the matching wallet option by name
+    const wallet = walletOptions.find(w => w.name === walletName);
     return wallet?.iconSrc;
   };
 
@@ -493,10 +502,6 @@ export function ConnectWallet({
       {connected && isDropdownOpen && (
         <div className="fixed md:absolute top-[calc(100%+8px)] right-0 md:w-72 w-[calc(100vw-32px)] bg-white dark:bg-gray-800 rounded-2xl shadow-lg z-50 border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-4 flex flex-col gap-3">
-            <div className="flex items-center gap-2.5">
-              <div>
-              </div>
-            </div>
             <button 
               className="flex items-center justify-between py-3.5 px-4 w-full border-none bg-transparent text-left text-base cursor-pointer text-gray-800 dark:text-gray-200 transition hover:bg-gray-50 dark:hover:bg-gray-700" 
               onClick={handleCopyAddress}

@@ -1,16 +1,19 @@
-# Snark Collective - Aleo Wallet Integration Template
+# Snark Collective - Aleo Wallet Integration Template with Adapters
 
-A modern, responsive React application template for integrating Aleo wallets into your dApp. This template provides a complete foundation for building decentralized applications on the Aleo blockchain with a focus on user experience and developer productivity.
+A modern, responsive React application template for integrating Aleo wallets into your dApp, using the adapter pattern and hooks-based approach. This template provides a complete foundation for building decentralized applications on the Aleo blockchain with a focus on user experience and developer productivity.
+
+This repository uses the **adapter pattern** with React hooks instead of the context-based approach:
 
 ## Features
 
+- **Hook-Based Integration**: Uses `aleo-hooks` for wallet interactions instead of a centralized context
+- **Composable API**: Each wallet functionality is exposed through dedicated hooks
+- **Simplified State Management**: No context provider wrappers needed for wallet functionality
 - **Multi-Wallet Support**: Integrate with multiple Aleo wallets including Puzzle, Leo, Fox, and Soter
 Note: Fox Wallet only supports Mainnet
-- **Complete Wallet API**: Unified interface for transactions, signatures, decryption, and record management
 - **Theme-Aware Design**: Dynamically changes logos and UI elements based on light/dark mode
 - **Modern UI/UX**: Responsive design built with Tailwind CSS
 - **Dark Mode**: Built-in dark mode support
-- **Wallet Context**: Centralized wallet state management with React Context
 - **TypeScript**: Full TypeScript support for better developer experience
 - **Vite**
 - **React**
@@ -27,8 +30,8 @@ Note: Fox Wallet only supports Mainnet
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/oguzutku1745/snarkcollective.git
-   cd snarkcollective
+   git clone https://github.com/your-username/Aleo-Starter-Template-Adapters.git
+   cd Aleo-Starter-Template-Adapters
    ```
 
 2. Install dependencies:
@@ -50,26 +53,23 @@ Note: Fox Wallet only supports Mainnet
 ## 🧩 Project Structure
 
 ```
-snarkcollective/
+Aleo-Starter-Template-Adapters/
 ├── public/              # Static assets
 ├── src/
 │   ├── assets/          # Images and other assets
 │   │   ├── logo.png           # Logo for dark mode
 │   │   ├── logodark.png       # Logo for light mode
-│   │   ├── writing.png        # Text logo for dark mode
-│   │   ├── writingdark.png    # Text logo for light mode
 │   │   └── ... (wallet icons)
 │   ├── components/      # UI components
-│   │   ├── ConnectWallet.tsx  # Wallet connection component
+│   │   ├── ConnectWallet.tsx  # Wallet connection component using hooks
 │   │   ├── Header.tsx         # Application header with theme-aware logos
 │   │   ├── Footer.tsx         # Application footer
 │   │   ├── Layout.tsx         # Main layout wrapper
 │   │   ├── ThemeToggle.tsx    # Dark/light mode toggle
-│   │   └── WalletDemo.tsx     # Demo of wallet integration with expandable sections
+│   │   └── WalletDemo.tsx     # Demo of wallet integration with hooks
 │   ├── contexts/        # React contexts
-│   │   ├── WalletContext.tsx  # Wallet state management
 │   │   └── ThemeContext.tsx   # Theme state management
-│   ├── main.tsx         # Application entry point
+│   ├── main.tsx         # Application entry point with wallet adapters
 │   └── index.css        # Global styles
 ├── index.html           # HTML template
 ├── package.json         # Dependencies and scripts
@@ -77,169 +77,143 @@ snarkcollective/
 └── vite.config.ts       # Vite configuration
 ```
 
-## 💼 Key Components
+## 💼 Adapter Pattern & Hooks
 
-### WalletContext
+This template uses the adapter pattern through the `aleo-hooks` and `aleo-adapters` packages to provide a more modern and flexible approach to wallet integration:
 
-The `WalletContext` provides a centralized way to manage wallet connections across your application. It handles:
+### Wallet Provider Setup
 
-- Wallet connection and disconnection
-- Connection state tracking
-- Error handling
-- Wallet selection
-- Transaction, signature, and record management with a unified API for all supported wallets
+```tsx
+// Example from main.tsx
+import { WalletProvider, WalletAdapterNetwork, DecryptPermission } from "aleo-hooks";
+import {
+  PuzzleWalletAdapter,
+  LeoWalletAdapter,
+  FoxWalletAdapter,
+  SoterWalletAdapter
+} from 'aleo-adapters';
+
+function App() {
+  const wallets = useMemo(
+      () => [
+          new LeoWalletAdapter({
+              appName: 'Aleo app',
+          }),
+          new PuzzleWalletAdapter({
+              programIdPermissions: {
+                [WalletAdapterNetwork.Testnet]: ['credits.aleo']
+              },
+              appName: 'Aleo app',
+              appDescription: 'A privacy-focused DeFi app',
+              appIconUrl: 'data:image/png;base64...'
+          }),
+          new FoxWalletAdapter({
+              appName: 'Aleo app',
+          }),
+          new SoterWalletAdapter({
+              appName: 'Aleo app',
+          })
+      ],
+      [],
+  );
+
+  return (
+    <ThemeProvider>
+      <WalletProvider
+              wallets={wallets}
+              network={WalletAdapterNetwork.Testnet}
+              decryptPermission={DecryptPermission.OnChainHistory}
+              programs={['credits.aleo']}
+              autoConnect
+      >
+        <Layout>
+          {/* App content */}
+        </Layout>
+      </WalletProvider>
+    </ThemeProvider>
+  );
+}
+```
+
+### Using Wallet Hooks
+
+Instead of accessing a wallet context, you use dedicated hooks to access specific wallet functionality:
 
 ```tsx
 // Example usage in a component
-import { useWallet } from '../contexts/WalletContext';
+import {
+  useConnect,
+  useDisconnect,
+  useAccount,
+  useTransaction,
+  useSignMessage,
+  useDecrypt,
+  useRecords,
+  useSelect
+} from 'aleo-hooks';
+import { Transaction } from '@demox-labs/aleo-wallet-adapter-base';
 
 function MyComponent() {
-  const { 
-    connected, 
-    connecting, 
-    address, 
-    walletName, 
-    connectWallet, 
-    disconnectWallet,
-    createTransaction,
-    signMessage,
-    decryptMessage,
-    getRecords 
-  } = useWallet();
+  // Connection hooks
+  const { connect, connecting } = useConnect();
+  const { disconnect } = useDisconnect();
+  const { publicKey: address, connected } = useAccount();
+  const { select } = useSelect();
   
-  // Create a transaction that works with any supported wallet
+  // Functionality hooks
+  const { executeTransaction, transactionId } = useTransaction();
+  const { signMessage } = useSignMessage();
+  const { decrypt, decryptedText } = useDecrypt({ cipherText: "your-ciphertext" });
+  const { records } = useRecords({ program: 'credits.aleo' });
+  
+  // Example transaction
   const handleTransaction = async () => {
-    if (connected) {
-      const result = await createTransaction({
-        programId: 'credits.aleo',
-        functionName: 'transfer',
-        inputs: ['aleo1abc...', '1000000u64'],
-        fee: 3000
-      });
+    if (connected && address) {
+      // Create transaction object
+      const transaction = Transaction.createTransaction(
+        address,
+        'testnet', // chainId
+        'credits.aleo', // programId
+        'transfer_public', // functionId
+        ['aleo1abc...', '1000000u64'], // inputs
+        10000, // fee
+        false // feePrivate
+      );
       
-      if (result.transactionId) {
-        console.log(`Transaction submitted: ${result.transactionId}`);
-      }
+      // Execute the transaction
+      await executeTransaction(transaction);
     }
+  };
+  
+  // Connect to wallet
+  const connectWallet = async (walletName) => {
+    // First select wallet
+    select(walletName);
+    
+    // Then connect
+    await connect(walletName);
   };
 }
 ```
 
-### ThemeContext
+### Benefits of Hooks-Based Approach
 
-The `ThemeContext` manages the application's theme state, providing automatic detection of system preferences and persistent theme selection:
+1. **Composable**: Only import and use the hooks you need
+2. **Testable**: Easier to test components that use hooks
+3. **Type-Safe**: Full TypeScript support with better type inference
+4. **Focused**: Each hook handles one specific concern
+5. **Performance**: Better code-splitting and tree-shaking possibilities
 
-```tsx
-// Example usage
-import { useTheme } from '../contexts/ThemeContext';
+## Available Hooks
 
-function MyComponent() {
-  const { theme, isDarkMode, toggleTheme } = useTheme();
-  
-  return (
-    <div>
-      <p>Current theme: {theme}</p>
-      <button onClick={toggleTheme}>
-        Switch to {isDarkMode ? 'light' : 'dark'} mode
-      </button>
-      
-      {/* Conditional rendering based on theme */}
-      {isDarkMode ? (
-        <img src="/dark-logo.png" alt="Logo" />
-      ) : (
-        <img src="/light-logo.png" alt="Logo" />
-      )}
-    </div>
-  );
-}
-```
-
-### ConnectWallet Component
-
-The `ConnectWallet` component provides a ready-to-use UI for connecting to Aleo wallets. It includes:
-
-- Wallet selection modal
-- Connection status indicators
-- Error handling
-- Responsive design
-
-```tsx
-// Example usage
-import { ConnectWallet } from './components/ConnectWallet';
-
-function App() {
-  return (
-    <div>
-      <ConnectWallet 
-        buttonText="Connect Your Wallet" 
-        modalTitle="Choose Your Wallet" 
-      />
-    </div>
-  );
-}
-```
-
-### WalletDemo Component
-
-The `WalletDemo` component showcases how to use the `WalletContext` with an expandable UI:
-
-- Collapsible sections for different wallet operations
-- Connection status and wallet information
-- Transaction creation demo
-- Message signing
-- Decryption
-- Records management
-- Transaction history viewing
-- Error details
-- Connection logs
-
-This component serves as a reference implementation for a well-organized wallet interface that keeps functionality accessible while maintaining a clean UI.
-
-## 🔧 Customization
-
-### Theming & Branding
-
-The template supports dynamic branding based on the user's theme preference:
-
-1. **Logo Switching**: Place your dark and light mode logo variants in the `assets` directory 
-2. **Theme Detection**: The app automatically detects user system preferences
-3. **Theme Toggle**: Users can manually switch between themes with the `ThemeToggle` component
-
-### Styling
-
-The template uses Tailwind CSS for styling. You can customize the theme by modifying the `tailwind.config.js` file:
-
-```js
-// tailwind.config.js
-module.exports = {
-  theme: {
-    extend: {
-      colors: {
-        // Add your custom colors
-      },
-      // Add other theme customizations
-    },
-  },
-  // ...
-};
-```
-
-### Adding New Wallets
-
-To add support for a new wallet:
-
-1. Update the `WalletContext.tsx` file to include the new wallet's connection logic
-2. Add the wallet's icon to the `assets` directory
-3. Update the `ConnectWallet.tsx` component to include the new wallet option
-4. Implement transaction handling for the new wallet in the `createTransaction` method
-
-## 🧪 Optimizations
-
-The codebase includes several optimizations to improve maintainability and performance:
-
-1. **Consolidated Adapter Patterns**: Common patterns for wallet adapters are extracted to reduce code duplication
-2. **Centralized Error Handling**: Standardized error handling functions reduce duplication and ensure consistent behavior
-3. **Theme-Aware Components**: SVGs and images adapt to the current theme for better visibility
+- `useConnect` - Manage wallet connection
+- `useDisconnect` - Disconnect from wallet
+- `useAccount` - Access wallet account information
+- `useSelect` - Select specific wallet adapter
+- `useTransaction` - Create and execute transactions
+- `useSignMessage` - Sign messages
+- `useDecrypt` - Decrypt ciphertexts
+- `useRecords` - Retrieve records from the blockchain
 
 ## 📚 Documentation
 
@@ -247,18 +221,11 @@ For more detailed documentation on the Aleo blockchain and wallet integration, v
 
 - [Aleo Developer Documentation](https://developer.aleo.org/)
 - [Aleo Adapters Documentation](https://github.com/arcane-finance-defi/aleo-wallet-adapters)
-- [Puzzle SDK Documentation](https://docs.puzzle.online/)
-- [Leo Adapter Documentation](https://github.com/demox-labs/aleo-wallet-adapter)
+- [Demox Labs Adapter Documentation](https://github.com/demox-labs/aleo-wallet-adapter)
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Contributions are welcome! If you'd like to contribute, please fork the repository and create a pull request.
 
 ## 📄 License
 
@@ -266,7 +233,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 🙏 Acknowledgments
 
-- [Aleo](https://aleo.org/) for building the Aleo blockchain
+- [Aleo](https://aleo.org/) for building on the Aleo blockchain
 - [React](https://reactjs.org/) for the amazing frontend library
 - [Tailwind CSS](https://tailwindcss.com/) for the utility-first CSS framework
 - [Vite](https://vitejs.dev/) for the fast build tool
