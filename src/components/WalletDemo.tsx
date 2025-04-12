@@ -319,7 +319,7 @@ export function WalletDemo() {
     setTransactionPending(true);
     addLog(`Creating transaction for ${transactionProgramId}.${transactionFunctionId} with fee ${transactionFee}`);
     
-    const chainId = walletName === "Leo Wallet" ? "testnetbeta" : "testnet";
+    const chainId = walletName === "Leo Wallet" ? "testnetbeta" : "testnet3";
 
     try {
       // Create proper AleoTransaction object using Transaction.createTransaction
