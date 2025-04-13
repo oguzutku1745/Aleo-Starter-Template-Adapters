@@ -346,7 +346,7 @@ export function WalletDemo() {
         console.log("Puzzle Wallet");
               // Create transaction with appropriate format based on wallet type
       const inputs = [receiverAddress, `${transactionAmount}u64`];
-      const fee = 0.1;
+      const fee = parseInt(transactionFee) / 100_000;
       console.log(fee)
 
         const createEventResponse = await requestCreateEvent({
