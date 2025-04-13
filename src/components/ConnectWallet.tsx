@@ -11,7 +11,6 @@ import soterIcon from '../assets/soterwallet.png';
 interface WalletOption {
   id: string;
   name: string;
-  icon: string;
   iconSrc: string;
   adapterId: string;
   detected?: boolean;
@@ -20,9 +19,16 @@ interface WalletOption {
 // Extend Window interface for wallet detection
 declare global {
   interface Window {
+    // For Puzzle Wallet detection
     puzzle?: any;
+    
+    // For Leo Wallet detection
     leoWallet?: any;
+    
+    // For Fox Wallet detection
     foxwallet?: any;
+    
+    // For Soter Wallet detection
     soter?: any;
     soterWallet?: any;
   }
@@ -33,23 +39,20 @@ const initialWalletOptions: WalletOption[] = [
   {
     id: 'puzzle',
     name: 'Puzzle Wallet',
-    icon: '🧩',
     iconSrc: puzzleIcon,
     adapterId: 'Puzzle Wallet',
     detected: false
   },
   {
-    id: 'leo',
+    id: 'leoWallet',
     name: 'Leo Wallet',
-    icon: '🦁',
     iconSrc: leoIcon,
     adapterId: 'Leo Wallet',
     detected: false
   },
   {
-    id: 'fox',
+    id: 'foxwallet',
     name: 'Fox Wallet',
-    icon: '🦊',
     iconSrc: foxIcon,
     adapterId: 'Fox Wallet',
     detected: false
@@ -57,7 +60,6 @@ const initialWalletOptions: WalletOption[] = [
   {
     id: 'soter',
     name: 'Soter Wallet',
-    icon: '🛡️',
     iconSrc: soterIcon,
     adapterId: 'Soter Wallet',
     detected: false
@@ -84,6 +86,7 @@ export function ConnectWallet({
   const { disconnect } = useDisconnect();
   const { publicKey: address, connected } = useAccount();
   const { select } = useSelect();
+  // Use the wallet identifier directly from the useAccount hook instead
   const [walletName, setWalletName] = useState<string | null>(null);
   
   // Use refs to track the latest state values for use in intervals/timeouts
@@ -95,6 +98,8 @@ export function ConnectWallet({
     connectedRef.current = connected;
     connectingRef.current = connecting;
   }, [connected, connecting]);
+  
+
 
   // Create portal root if needed
   useEffect(() => {
@@ -116,28 +121,15 @@ export function ConnectWallet({
     };
   }, []);
 
-  // Add an effect to detect wallet type on initial connect or page refresh
-  useEffect(() => {
-    if (connected && !walletName) {
-      const detectWalletType = () => {
-        // Check for each wallet type
-        if (typeof window.puzzle !== 'undefined') {
-          setWalletName('Puzzle Wallet');
-        } else if (typeof window.leoWallet !== 'undefined') {
-          setWalletName('Leo Wallet');
-        } else if (typeof window.foxwallet !== 'undefined') {
-          setWalletName('Fox Wallet');
-        } else if (typeof window.soter !== 'undefined' || typeof window.soterWallet !== 'undefined') {
-          setWalletName('Soter Wallet');
-        } else {
-          // Generic fallback
-          setWalletName('Connected Wallet');
-        }
-      };
-      
-      detectWalletType();
-    }
-  }, [connected, walletName]);
+  // Function to get the current wallet icon based on wallet name
+  const getCurrentWalletIcon = (): string | undefined => {
+    if (!walletName) return undefined;
+    
+    // Find the matching wallet option
+    const walletOption = walletOptions.find(w => w.name === walletName);
+    
+    return walletOption?.iconSrc;
+  };
 
   // Function to shorten address for display
   const shortenAddress = (addr: string | null) => {
@@ -151,25 +143,34 @@ export function ConnectWallet({
     const checkWallets = () => {
       const updatedOptions = [...initialWalletOptions];
       
+      // Log available wallet extensions for debugging
+      console.log("DEBUG: Checking for available wallets:", {
+        puzzle: typeof window.puzzle !== 'undefined',
+        leoWallet: typeof window.leoWallet !== 'undefined', 
+        foxwallet: typeof window.foxwallet !== 'undefined',
+        soter: typeof window.soter !== 'undefined',
+        soterWallet: typeof window.soterWallet !== 'undefined'
+      });
+      
       // Check for Puzzle wallet
       if (typeof window.puzzle !== 'undefined') {
         const index = updatedOptions.findIndex(w => w.id === 'puzzle');
         if (index >= 0) updatedOptions[index].detected = true;
       }
       
-      // Check for Leo wallet - check only leoWallet property
+      // Check for Leo wallet
       if (typeof window.leoWallet !== 'undefined') {
-        const index = updatedOptions.findIndex(w => w.id === 'leo');
+        const index = updatedOptions.findIndex(w => w.id === 'leoWallet');
         if (index >= 0) updatedOptions[index].detected = true;
       }
       
       // Check for Fox wallet
       if (typeof window.foxwallet !== 'undefined') {
-        const index = updatedOptions.findIndex(w => w.id === 'fox');
+        const index = updatedOptions.findIndex(w => w.id === 'foxWallet');
         if (index >= 0) updatedOptions[index].detected = true;
       }
       
-      // Check for Soter wallet (checking both possible identifiers)
+      // Check for Soter wallet
       if (typeof window.soter !== 'undefined' || typeof window.soterWallet !== 'undefined') {
         const index = updatedOptions.findIndex(w => w.id === 'soter');
         if (index >= 0) updatedOptions[index].detected = true;
@@ -274,21 +275,54 @@ export function ConnectWallet({
     const adapterId = wallet.adapterId;
     
     try {
+      console.log(`DEBUG: Setting wallet type before connecting: ${wallet.name}`);
+      // Set wallet name immediately to avoid race conditions
+      setWalletName(wallet.name);
+      
       // Standard adapter approach for all wallets
       select(adapterId as any);
+      console.log(`DEBUG: Selected adapter ${adapterId}`);
       
       // Connect after a small delay
       setTimeout(async () => {
         try {
           await connect(adapterId as any);
+          console.log(`DEBUG: Connected successfully to ${adapterId}`);
           
-          // Set the wallet name
-          setWalletName(wallet.name);
+          // Dispatch custom event to notify other components about wallet selection
+          const walletConnectedEvent = new CustomEvent('walletConnected', { 
+            detail: { 
+              walletId: wallet.id,
+              walletName: wallet.name,
+              adapterId: adapterId
+            }
+          });
+          window.dispatchEvent(walletConnectedEvent);
+          console.log(`DEBUG: Dispatched walletConnected event for ${wallet.name}`);
           
-          // Close the modal after 500ms to allow UI to update
+          // Verify connection after a moment
           setTimeout(() => {
-            forceCloseModal();
+            // Verify that the correct window object exists
+            const isConnected = connected;
+            
+            if (isConnected) {
+              console.log(`DEBUG: Verified connection to ${adapterId}`);
+              // Double check window objects to ensure detection works in other components
+              if (walletId === 'puzzle' && typeof window.puzzle === 'undefined') {
+                console.warn("DEBUG: Connected to Puzzle Wallet but window.puzzle is undefined");
+              } else if (walletId === 'leoWallet' && typeof window.leoWallet === 'undefined') {
+                console.warn("DEBUG: Connected to Leo Wallet but window.leoWallet is undefined");
+              }
+            } else {
+              console.warn(`DEBUG: Failed to verify connection to ${adapterId}`);
+            }
           }, 500);
+          
+          // Additional timeout to ensure wallet is fully connected before closing modal
+          setTimeout(() => {
+            // Close the modal after wallet connection is complete
+            forceCloseModal();
+          }, 800);
         } catch (error) {
           console.error("Connection error:", error);
           setConnectingWalletId(null);
@@ -304,7 +338,14 @@ export function ConnectWallet({
     try {
       await disconnect();
       setWalletName(null);
-      setIsDropdownOpen(false);
+      setIsDropdownOpen(false); // Close dropdown on disconnect
+      
+      // Dispatch an event to notify other components about disconnection
+      const walletDisconnectedEvent = new CustomEvent('walletDisconnected');
+      window.dispatchEvent(walletDisconnectedEvent);
+      console.log("DEBUG: Dispatched walletDisconnected event");
+      
+      console.log("DEBUG: Disconnected wallet and reset state");
     } catch (error) {
       console.error("Disconnect error:", error);
     }
@@ -315,15 +356,6 @@ export function ConnectWallet({
     setIsOpen(true);
     // Force body to not scroll when modal is open
     document.body.style.overflow = 'hidden';
-  };
-
-  // Find the wallet icon to display in the button
-  const getWalletIcon = (): string | undefined => {
-    if (!walletName) return undefined;
-    
-    // Find the matching wallet option by name
-    const wallet = walletOptions.find(w => w.name === walletName);
-    return wallet?.iconSrc;
   };
 
   // Handle copy address with feedback
@@ -484,8 +516,8 @@ export function ConnectWallet({
       >
         {connected ? (
           <>
-            {getWalletIcon() ? (
-              <img src={getWalletIcon()} alt={walletName || ''} className="w-5 h-5 mr-1" />
+            {getCurrentWalletIcon() ? (
+              <img src={getCurrentWalletIcon()} alt={walletName || ''} className="w-5 h-5 mr-1" />
             ) : (
               <span className="text-lg mr-1">👛</span>
             )}

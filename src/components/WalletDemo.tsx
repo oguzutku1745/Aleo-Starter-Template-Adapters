@@ -1,19 +1,18 @@
 import { useState, useEffect } from 'react';
-// Replace WalletContext with hooks from aleo-hooks
 import {
   useConnect,
-  useDisconnect,
   useAccount,
   useTransaction,
   useSignMessage,
   useDecrypt,
   useRecords,
-  useSelect
+  Transaction
 } from 'aleo-hooks';
 import { RecordStatus, EventType } from '@puzzlehq/types';
 import { useTheme } from '../contexts/ThemeContext';
-// Import Transaction class
-import { Transaction } from '@demox-labs/aleo-wallet-adapter-base';
+import { requestCreateEvent } from "@puzzlehq/sdk"
+
+import { Transaction as LeoTransaction } from '@demox-labs/aleo-wallet-adapter-base';
 
 // Import wallet images
 import puzzleIcon from '../assets/puzzlewallet.png';
@@ -21,26 +20,49 @@ import leoIcon from '../assets/leowallet.png';
 import foxIcon from '../assets/foxwallet.svg';
 import soterIcon from '../assets/soterwallet.png';
 
-// Define types
-interface Wallet {
-  id: 'puzzle' | 'leo' | 'fox' | 'soter';
-  name: string;
-  icon: string;
-}
+// Wallet configurations
+const WALLET_CONFIG = {
+  puzzle: {
+    id: 'puzzle',
+    name: 'Puzzle Wallet',
+    icon: puzzleIcon,
+    adapterId: 'Puzzle Wallet',
+    windowProperty: 'puzzle',
+    chainId: 'testnet3'
+  },
+  leoWallet: {
+    id: 'leoWallet',
+    name: 'Leo Wallet',
+    icon: leoIcon,
+    adapterId: 'Leo Wallet',
+    windowProperty: 'leoWallet',
+    chainId: 'testnetbeta'
+  },
+  foxwallet: {
+    id: 'foxwallet',
+    name: 'Fox Wallet',
+    icon: foxIcon,
+    adapterId: 'Fox Wallet',
+    windowProperty: 'foxwallet',
+    chainId: 'testnet3'
+  },
+  soter: {
+    id: 'soter',  
+    name: 'Soter Wallet',
+    icon: soterIcon,
+    adapterId: 'Soter Wallet',
+    windowProperty: 'soter',
+    chainId: 'testnet3'
+  }
+};
 
 // Extend Window interface for wallet detection
 declare global {
   interface Window {
-    // For Puzzle Wallet detection
-    puzzleWalletClient?: any;
-    
-    // For Leo Wallet detection
+    puzzle?: any;
     leoWallet?: any;
-    
-    // For Fox Wallet detection
-    foxwallet_aleo?: any;
-    
-    // For Soter Wallet detection
+    foxwallet?: any;
+    soter?: any;
     soterWallet?: any;
   }
 }
@@ -91,12 +113,12 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
 
 export function WalletDemo() {
   // State for UI
-  const [selectedWallet, setSelectedWallet] = useState<'puzzle' | 'leo' | 'fox' | 'soter' | null>(null);
+  const [selectedWallet, setSelectedWallet] = useState<'puzzle' | 'leoWallet' | 'foxwallet' | 'soter' | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>('');
-  const [availableWallets, setAvailableWallets] = useState<Wallet[]>([]);
   const [lastError, setLastError] = useState<string | null>(null);
   const [connectionLogs, setConnectionLogs] = useState<{timestamp: Date, event: string, data?: any}[]>([]);
   const [walletName, setWalletName] = useState<string | null>(null);
+  const [previousWalletName, setPreviousWalletName] = useState<string | null>(null);
   
   // Transaction state
   const [transactionPending, setTransactionPending] = useState<boolean>(false);
@@ -140,8 +162,7 @@ export function WalletDemo() {
   const [lastTransactionHistory, setLastTransactionHistory] = useState<any[]>([]);
 
   // Use aleo-hooks
-  const { connect, connecting: connectLoading, error: connectError } = useConnect();
-  const { disconnect } = useDisconnect();
+  const { connecting: connectLoading, error: connectError } = useConnect();
   const { publicKey: address, connected } = useAccount();
   const { executeTransaction, transactionId } = useTransaction();
   const { signMessage } = useSignMessage();
@@ -150,7 +171,22 @@ export function WalletDemo() {
     enabled: decryptCiphertext.length > 0 
   });
   const { records } = useRecords({ program: recordsProgramId });
-  const { select } = useSelect();
+
+  // Handle wallet changes to simulate a hot reload
+  useEffect(() => {
+    if (walletName && walletName !== previousWalletName) {
+      setPreviousWalletName(walletName);
+      
+      // Reset transaction states on wallet change
+      const timeout = setTimeout(() => {
+        setTransactionPending(false);
+        setTransactionResult(null);
+        addLog(`Wallet changed to ${walletName}`);
+      }, 500);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [walletName, previousWalletName]);
 
   // Helper function to add logs
   const addLog = (event: string, data?: any) => {
@@ -162,29 +198,11 @@ export function WalletDemo() {
     });
   };
 
-  // Effect for setting available wallets
-  useEffect(() => {
-    setAvailableWallets([
-      { id: 'puzzle', name: 'Puzzle Wallet', icon: puzzleIcon },
-      { id: 'leo', name: 'Leo Wallet', icon: leoIcon },
-      { id: 'fox', name: 'Fox Wallet', icon: foxIcon },
-      { id: 'soter', name: 'Soter Wallet', icon: soterIcon }
-    ]);
-  }, []);
-
   // Effect for connection status
   useEffect(() => {
     if (connected) {
       setConnectionStatus('Connected');
       setLastError(null);
-      
-      // Set wallet name based on selected wallet
-      if (selectedWallet) {
-        const walletInfo = availableWallets.find(w => w.id === selectedWallet);
-        if (walletInfo) {
-          setWalletName(walletInfo.name);
-        }
-      }
     } else if (connectLoading) {
       setConnectionStatus('Connecting...');
     } else if (connectError) {
@@ -193,17 +211,50 @@ export function WalletDemo() {
         : 'Unknown connection error';
       setConnectionStatus(`Error: ${errorMessage}`);
       setLastError(errorMessage);
-    } else if (!connected) {
+    } else {
       setConnectionStatus(lastError ? `Disconnected (last error: ${lastError})` : 'Disconnected');
     }
-  }, [connected, connectLoading, connectError, lastError, selectedWallet, availableWallets]);
+  }, [connected, connectLoading, connectError, lastError]);
+
+  // Add effect to sync with the ConnectWallet component via custom event
+  useEffect(() => {
+    // Listen for wallet connected events from ConnectWallet component
+    const handleWalletConnectedEvent = (event: any) => {
+      const { walletId, walletName: connectedWalletName } = event.detail;
+      
+      // Update our local state to match the connected wallet
+      setSelectedWallet(walletId as any);
+      setWalletName(connectedWalletName);
+      
+      // Log the sync
+      addLog(`Synced with wallet selection: ${connectedWalletName}`);
+    };
+    
+    // Listen for wallet disconnected events
+    const handleWalletDisconnectedEvent = () => {
+      // Clear wallet state
+      setWalletName(null);
+      setSelectedWallet(null);
+      
+      // Log the sync
+      addLog(`Synced wallet disconnection`);
+    };
+    
+    // Add event listeners
+    window.addEventListener('walletConnected', handleWalletConnectedEvent);
+    window.addEventListener('walletDisconnected', handleWalletDisconnectedEvent);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('walletConnected', handleWalletConnectedEvent);
+      window.removeEventListener('walletDisconnected', handleWalletDisconnectedEvent);
+    };
+  }, []);
 
   // Effect to reset selected wallet when disconnected
   useEffect(() => {
     if (!connected && !connectLoading && selectedWallet) {
-      setTimeout(() => {
-        setSelectedWallet(null);
-      }, 2000);
+      setSelectedWallet(null);
     }
   }, [connected, connectLoading, selectedWallet]);
 
@@ -214,133 +265,131 @@ export function WalletDemo() {
     }
   }, [transactionId]);
 
-  // Add an effect to detect and restore wallet information on component mount
+  // Add an effect to detect wallet changes even when already connected
+  // This helps synchronize with the ConnectWallet component
   useEffect(() => {
-    // If connected on initial load but we don't have wallet info
-    if (connected && !selectedWallet) {
-      // Try to detect which wallet is connected
-      const detectWallet = async () => {
-        try {
-          // Check each wallet's pattern to identify them
-          if (typeof window.puzzleWalletClient !== 'undefined') {
-            setSelectedWallet('puzzle');
-            setWalletName('Puzzle Wallet');
-            addLog('Detected connected Puzzle Wallet after refresh');
-          } else if (typeof window.leoWallet !== 'undefined') {
-            setSelectedWallet('leo');
-            setWalletName('Leo Wallet');
-            addLog('Detected connected Leo Wallet after refresh');
-          } else if (typeof window.foxwallet_aleo !== 'undefined') {
-            setSelectedWallet('fox');
-            setWalletName('Fox Wallet');
-            addLog('Detected connected Fox Wallet after refresh');
-          } else if (typeof window.soterWallet !== 'undefined') {
-            setSelectedWallet('soter');
-            setWalletName('Soter Wallet');
-            addLog('Detected connected Soter Wallet after refresh');
-          } else {
-            // If we can't detect it, use a generic message but at least show connected
-            setWalletName('Connected Wallet');
-            addLog('Connected to wallet but could not identify type');
-          }
-        } catch (error) {
-          console.error('Error detecting wallet type:', error);
-        }
-      };
-      
-      detectWallet();
+    if (connected) {
+      // Directly use the current wallet adapter state from the useAccount hook
+      // This is much simpler than trying to detect it ourselves
     }
-  }, [connected, selectedWallet, addLog]);
-
-  // Handle connecting a wallet
-  const handleConnectWallet = async (type: 'puzzle' | 'leo' | 'fox' | 'soter') => {
-    setSelectedWallet(type);
-    addLog(`Connecting to ${type} wallet...`);
-    
-    try {
-      // Map internal wallet types to wallet adapter names
-      const walletAdapterNames = {
-        'puzzle': 'Puzzle Wallet',
-        'leo': 'Leo Wallet',
-        'fox': 'Fox Wallet',
-        'soter': 'Soter Wallet'
-      };
-      
-      // Get the adapter name
-      const adapterId = walletAdapterNames[type];
-      
-      // First select the wallet
-      select(adapterId as any);
-      
-      // Then connect after a small delay
-      setTimeout(async () => {
-        try {
-          // Cast to any to bypass TypeScript checks
-          await connect(adapterId as any);
-          addLog(`Connected successfully to ${adapterId}`);
-          
-          // Set the wallet name explicitly here
-          setWalletName(walletAdapterNames[type]);
-        } catch (error: any) {
-          setLastError(error.message || 'Unknown error connecting wallet');
-          addLog(`Error connecting to ${type} wallet: ${error.message || 'Unknown error'}`);
-        }
-      }, 100);
-    } catch (error: any) {
-      setLastError(error.message || 'Unknown error selecting wallet');
-      addLog(`Error selecting ${type} wallet: ${error.message || 'Unknown error'}`);
-    }
-  };
-
-  // Handle disconnecting a wallet
-  const handleDisconnectWallet = async () => {
-    addLog("Disconnecting wallet...");
-    
-    try {
-      await disconnect();
-      setWalletName(null); // Clear the wallet name when disconnecting
-      addLog("Disconnected successfully");
-    } catch (error: any) {
-      setLastError(error.message || "Failed to disconnect");
-      addLog(`Disconnection error: ${error.message || "Unknown error"}`);
-    }
-  };
+  }, [connected]);
 
   // Handle transaction request
-  const handleRequestTransaction = async () => {
-    if (!connected || !address) {
+  const handleExecuteTransaction = async () => {
+    if (!connected) {
       setLastError('Wallet not connected');
+      addLog('Transaction failed', 'Wallet not connected');
       return;
     }
 
-    console.log("called")
-
-    setTransactionResult(null);
     setTransactionPending(true);
-    addLog(`Creating transaction for ${transactionProgramId}.${transactionFunctionId} with fee ${transactionFee}`);
-    
-    const chainId = walletName === "Leo Wallet" ? "testnetbeta" : "testnet3";
+    setTransactionResult(null);
+    addLog('Requesting transaction execution', {
+      program: transactionProgramId,
+      function: transactionFunctionId,
+      fee: transactionFee
+    });
 
     try {
-      // Create proper AleoTransaction object using Transaction.createTransaction
+      const currentWalletName = walletName;
+      
+      if (!currentWalletName) {
+        throw new Error("Wallet name not set, cannot determine wallet type");
+      }
+      
+      // Get wallet configuration
+      const walletConfig = selectedWallet 
+        ? WALLET_CONFIG[selectedWallet] 
+        : Object.values(WALLET_CONFIG).find(w => w.name === currentWalletName);
+      
+      if (!walletConfig) {
+        throw new Error(`Unknown wallet configuration: ${currentWalletName}`);
+      }
+      
+      // Small delay to ensure wallet is ready
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      if (!executeTransaction) {
+        setLastError("Transaction function not initialized yet. Please try again.");
+        return;
+      }
+      
+      let txId;
+      
+      // For Leo Wallet, try direct wallet access first
+      if (currentWalletName === 'Leo Wallet' && window.leoWallet && 
+          typeof window.leoWallet.requestTransaction === 'function') {
+        try {
+          const transaction = LeoTransaction.createTransaction(
+            address!, 
+            walletConfig.chainId,
+            transactionProgramId,
+            transactionFunctionId,
+            [receiverAddress, `${transactionAmount}u64`],
+            parseInt(transactionFee),
+            false
+          );
+          
+          txId = await window.leoWallet.requestTransaction(transaction);
+          if (txId) {
+            console.log(txId)
+            setTransactionResult(`Transaction submitted: ${txId.transactionId}`);
+            addLog('Transaction submitted', { transactionId: txId.transactionId });
+            setTransactionPending(false);
+            return;
+          }
+        } catch (error) {
+          console.log(error)
+        }
+      } else if (currentWalletName === 'Puzzle Wallet') {
+
+        console.log("Puzzle Wallet");
+              // Create transaction with appropriate format based on wallet type
+      const inputs = [receiverAddress, `${transactionAmount}u64`];
+      const fee = 0.1;
+      console.log(fee)
+
+        const createEventResponse = await requestCreateEvent({
+          type: EventType.Execute,
+          programId: transactionProgramId,
+          functionId: transactionFunctionId,
+          fee: fee,
+          inputs: inputs
+        });
+
+
+        console.log(createEventResponse);
+        const txId = createEventResponse.eventId;
+        setTransactionResult(`Transaction submitted: ${txId}`);
+        addLog('Transaction submitted', { transactionId: txId });
+        setTransactionPending(false);
+        return;
+      }
+      
+      // Create transaction with appropriate format based on wallet type
+      const inputs = [receiverAddress, `${transactionAmount}u64`];
+      const fee = parseInt(transactionFee);
+      
+      // Generic transaction handler for other wallet types
       const transaction = Transaction.createTransaction(
-        address,
-        chainId,
+        address!,
+        walletConfig.chainId,
         transactionProgramId,
         transactionFunctionId,
-        [receiverAddress, `${transactionAmount}u64`],
-        Number(transactionFee),
-        false // feePrivate
+        inputs,
+        fee,
+        false
       );
+      txId = await executeTransaction(transaction);
       
-      console.log("called")
-
-      // Execute the transaction with the proper AleoTransaction object
-      await executeTransaction(transaction);
+      setTransactionResult(`Transaction submitted: ${txId}`);
+      addLog('Transaction submitted', { transactionId: txId });
     } catch (error: any) {
-      setLastError(error.message || 'Unknown error creating transaction');
-      setTransactionResult(`Transaction failed: ${error.message || 'Unknown error'}`);
-      addLog(`Transaction error: ${error.message || 'Unknown error'}`);
+      console.error('Transaction error:', error);
+      const errorMessage = error.message || 'Unknown transaction error';
+      setLastError(errorMessage);
+      setTransactionResult(`Error: ${errorMessage}`);
+      addLog('Transaction failed', errorMessage);
     } finally {
       setTransactionPending(false);
     }
@@ -538,11 +587,8 @@ export function WalletDemo() {
   };
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-6 bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm w-full">
-      <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">Wallet Integration Demo</h2>
-      
-      {/* Status Section - Always Expanded */}
-      <CollapsibleSection title="Wallet Status" defaultExpanded={true}>
+    <div className="container p-4 mx-auto max-w-3xl">
+      <CollapsibleSection title="Wallet Connection" defaultExpanded={true}>
         <div className="mb-4">
           <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
             <p className="text-gray-700 dark:text-gray-300">
@@ -550,21 +596,18 @@ export function WalletDemo() {
             </p>
             <br />
             <p className="text-gray-700 dark:text-gray-300 mb-1">
-            <span className="font-semibold">Is Connected:</span> {connected ? 'Yes' : 'No'}
-          </p>
-          <p className="text-gray-700 dark:text-gray-300 mb-1">
-            <span className="font-semibold">Is Connecting:</span> {connectLoading ? 'Yes' : 'No'}
-          </p>
-          <p className="text-gray-700 dark:text-gray-300">
-            <span className="font-semibold">Error:</span> {lastError || 'None'}
-          </p>
-
+              <span className="font-semibold">Is Connected:</span> {connected ? 'Yes' : 'No'}
+            </p>
+            <p className="text-gray-700 dark:text-gray-300 mb-1">
+              <span className="font-semibold">Is Connecting:</span> {connectLoading ? 'Yes' : 'No'}
+            </p>
+            <p className="text-gray-700 dark:text-gray-300">
+              <span className="font-semibold">Error:</span> {lastError || 'None'}
+            </p>
           </div>
-        </div>
-        
-        {connected && (
-          <div className="mb-4">
-            <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+          
+          {address && (
+            <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
               <p className="text-gray-700 dark:text-gray-300 mb-1 break-all">
                 <span className="font-semibold">Address:</span> {address || 'Not available'}
               </p>
@@ -572,43 +615,8 @@ export function WalletDemo() {
                 <span className="font-semibold">Wallet Name:</span> {walletName || 'Unknown'}
               </p>
             </div>
-          </div>
-        )}
-
-        {/* Wallet Selection */}
-        <div className="mb-4">
-          <h4 className="text-md font-semibold text-gray-700 dark:text-gray-300 mb-2">Available Wallets</h4>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {availableWallets.map((wallet) => (
-              <button
-                key={wallet.id}
-                onClick={() => handleConnectWallet(wallet.id)}
-                disabled={connectLoading}
-                className={`p-3 rounded-lg border flex flex-col items-center justify-center transition-all ${
-                  selectedWallet === wallet.id
-                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700'
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-              >
-                <img 
-                  src={wallet.icon} 
-                  alt={wallet.name} 
-                  className="w-10 h-10 mb-2" 
-                />
-                {wallet.name === "Fox Wallet" ? <span className="text-sm font-medium text-gray-800 dark:text-gray-200">Fox Wallet (Mainnet Only)</span> : <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{wallet.name}</span>}
-              </button>
-            ))}
-          </div>
+          )}
         </div>
-
-        {connected && (
-          <button
-            onClick={handleDisconnectWallet}
-            className="w-full p-2 rounded-md font-medium bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white transition-colors"
-          >
-            Disconnect Wallet
-          </button>
-        )}
       </CollapsibleSection>
       
       {/* Transaction Demo Section */}
@@ -669,7 +677,7 @@ export function WalletDemo() {
             </div>
             
             <button
-              onClick={handleRequestTransaction}
+              onClick={handleExecuteTransaction}
               disabled={transactionPending || !connected}
               className={`w-full p-2 rounded-md font-medium ${
                 transactionPending
