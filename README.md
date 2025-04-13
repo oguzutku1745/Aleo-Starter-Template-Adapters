@@ -11,6 +11,7 @@ This repository uses the **adapter pattern** with React hooks instead of the con
 - **Simplified State Management**: No context provider wrappers needed for wallet functionality
 - **Multi-Wallet Support**: Integrate with multiple Aleo wallets including Puzzle, Leo, Fox, and Soter
 Note: Fox Wallet only supports Mainnet
+- **Wallet-Specific Transaction Handling**: Optimized transaction execution based on wallet type
 - **Theme-Aware Design**: Dynamically changes logos and UI elements based on light/dark mode
 - **Modern UI/UX**: Responsive design built with Tailwind CSS
 - **Dark Mode**: Built-in dark mode support
@@ -196,13 +197,105 @@ function MyComponent() {
 }
 ```
 
-### Benefits of Hooks-Based Approach
+## 🔄 Wallet-Specific Transaction Handling
 
-1. **Composable**: Only import and use the hooks you need
-2. **Testable**: Easier to test components that use hooks
-3. **Type-Safe**: Full TypeScript support with better type inference
-4. **Focused**: Each hook handles one specific concern
-5. **Performance**: Better code-splitting and tree-shaking possibilities
+This template implements specialized transaction handling for different Aleo wallets, ensuring optimal compatibility and user experience.
+
+### Transaction Execution Strategy
+
+The application detects the connected wallet type and uses the appropriate transaction format and execution method:
+
+```tsx
+// Transaction execution based on wallet type
+const handleExecuteTransaction = async () => {
+  if (!connected) {
+    setLastError('Wallet not connected');
+    return;
+  }
+
+  // Get current wallet information
+  const currentWalletName = walletName;
+  
+  // For Leo Wallet
+  if (currentWalletName === 'Leo Wallet' && window.leoWallet && 
+      typeof window.leoWallet.requestTransaction === 'function') {
+    // Create transaction with Leo Wallet format
+    const transaction = LeoTransaction.createTransaction(
+      address!, 
+      walletConfig.chainId,
+      programId,
+      functionName,
+      inputs,
+      fee,
+      false // feePrivate
+    );
+    
+    // Execute directly through window.leoWallet API
+    const txId = await window.leoWallet.requestTransaction(transaction);
+    return txId;
+  } 
+  
+  // For Puzzle Wallet
+  else if (currentWalletName === 'Puzzle Wallet') {
+    // Use Puzzle SDK's requestCreateEvent method
+    const createEventResponse = await requestCreateEvent({
+      type: EventType.Execute,
+      programId: programId,
+      functionId: functionName,
+      fee: fee / 100_000, // Convert microcredits to credits
+      inputs: inputs
+    });
+    
+    return createEventResponse.eventId;
+  }
+  
+  // For other wallets (Fox, Soter, etc.)
+  else {
+    // Use the generic Transaction format
+    const transaction = Transaction.createTransaction(
+      address!,
+      chainId,
+      programId,
+      functionName,
+      inputs,
+      fee,
+      false // feePrivate
+    );
+    
+    // Execute through the wallet adapter's executeTransaction hook
+    return await executeTransaction(transaction);
+  }
+};
+```
+
+### Key Differences Between Wallet Transaction Implementations
+
+1. **Leo Wallet**:
+   - Uses `LeoTransaction.createTransaction` format
+   - Executes via direct `window.leoWallet.requestTransaction` call when available
+   - Transaction ID is retrieved from the wallet's response
+
+2. **Puzzle Wallet**:
+   - Uses Puzzle SDK's `requestCreateEvent` method
+   - Requires fee in credits (not microcredits)
+   - Returns an event ID instead of a transaction ID
+
+3. **Other Wallets (Fox, Soter)**:
+   - Use the generic `Transaction.createTransaction` format
+   - Execute via the `executeTransaction` hook
+   - Handle fee in microcredits
+
+### Transaction Parameters Explained
+
+| Parameter | Description | Format Example |
+|-----------|-------------|----------------|
+| address   | The user's Aleo account address | `"aleo1abc..."` |
+| chainId   | Network identifier | `"testnet3"`, `"testnetbeta"` |
+| programId | The Aleo program to execute | `"credits.aleo"` |
+| functionId| The function to call within the program | `"transfer_public"` |
+| inputs    | The function arguments | `["aleo1xyz...", "1000000u64"]` |
+| fee       | Transaction fee (in microcredits, except for Puzzle) | `10000` |
+| feePrivate| Whether to use a private fee | `false` |
 
 ## Available Hooks
 
@@ -222,6 +315,7 @@ For more detailed documentation on the Aleo blockchain and wallet integration, v
 - [Aleo Developer Documentation](https://developer.aleo.org/)
 - [Aleo Adapters Documentation](https://github.com/arcane-finance-defi/aleo-wallet-adapters)
 - [Demox Labs Adapter Documentation](https://github.com/demox-labs/aleo-wallet-adapter)
+- [Puzzle SDK Documentation](https://docs.puzzle.online/)
 
 ## 🤝 Contributing
 
@@ -237,6 +331,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [React](https://reactjs.org/) for the amazing frontend library
 - [Tailwind CSS](https://tailwindcss.com/) for the utility-first CSS framework
 - [Vite](https://vitejs.dev/) for the fast build tool
+- [Puzzle](https://puzzle.online/) for their SDK
+- [Leo Wallet](https://leo.app/) for their wallet API
 
 ---
 
